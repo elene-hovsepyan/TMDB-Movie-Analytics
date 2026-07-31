@@ -1,0 +1,425 @@
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2) # For plotting
+library(dplyr) # For data manipulation
+library(tidyr) # For seperating rows by commas
+library(forcats) # For reordering rows
+library(RColorBrewer) # For color brewer package
+library(wordcloud) # For plotting wordclouds
+
+df <- read.csv("cleaned_movies.csv")
+library(IRkernel)
+```
+```
+Pie charts
+```
+```
+1. Pie chart showing the top countries of production
+```
+```{r}
+# Pie chart of countries of production
+
+# Seperating the commas, adding frequency column
+df_countries <- df %>% select(production_countries) %>%
+  filter(production_countries != "") %>%
+  separate_rows(production_countries, sep = ", ") %>%
+  group_by(production_countries) %>%
+  summarise(frequency = n()) %>%
+  arrange(desc(frequency))
+
+n_of_count <- nrow(df_countries) # number of countries
+other_freq <- sum(df_countries[31:n_of_count, "frequency"]) # sum of other frequencies
+
+# Make an "Other" row
+new_row <- list(production_countries = "Other", frequency = other_freq)
+
+# Take top 30, factor countries in order
+df_countries <- df_countries %>%
+  slice(1:30) %>%
+  add_row(!!!new_row) %>%
+  mutate(production_countries = factor(production_countries, levels = production_countries))
+
+# Make a palette
+pie_palette = c(brewer.pal(9, "Set1"), brewer.pal(8, "Dark2"), brewer.pal(8, "Set1"), brewer.pal(8, "Set3"))
+
+# Pie chart 
+ggplot(df_countries, aes(x = "", y = frequency, fill = production_countries)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  labs(title = "Countries of Production") +
+  scale_fill_manual(values = pie_palette, name = "Countries of production")
+```
+```
+2. Pie chart showing the statuses of movies
+```
+
+```{r}
+# Pie chart of status (released,..)
+
+# add a frequency column
+df_status <- df %>%
+  select(status) %>%
+  group_by(status) %>%
+  summarise(Count = n())
+
+# plot pie chart
+ggplot(df_status, aes(x = "", y = Count, fill = status)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  labs(title = "Status")
+```
+```
+3. Pie chart showing top companies of production
+```
+```{r}
+# Pie chart of top companies of production
+
+# Seperating the commas, adding frequency column
+df_comp <- df %>% select(production_companies, adult) %>%
+  filter(production_companies != "", adult == "False") %>%
+  separate_rows(production_companies, sep = ", ") %>%
+  group_by(production_companies) %>%
+  summarise(frequency = n()) %>%
+  arrange(desc(frequency))
+
+# Take top 30, factor countries in order
+df_comp <- df_comp %>%
+  slice(1:30) %>%
+  mutate(production_companies = factor(production_companies, levels = production_companies))
+
+# Make a palette
+pie_palette = c(brewer.pal(9, "Set1"), brewer.pal(8, "Dark2"), brewer.pal(8, "Set1"), brewer.pal(8, "Set3"))
+
+# Pie chart 
+ggplot(df_comp, aes(x = "", y = frequency, fill = production_companies)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  labs(title = "Companies of Production") +
+  scale_fill_manual(values = pie_palette, name = "Companies of production")
+
+```
+```
+4. Pie chart showing percentage of adult movies
+```
+
+```{r}
+# Adult movies
+
+# Add a frequency column
+df_adult <- df %>%
+  select(adult) %>%
+  group_by(adult) %>%
+  summarise(frequency = n())
+
+ggplot(df_adult, aes(x = "", y = frequency, fill = adult)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  labs(title = "Adult movies") 
+```
+```
+Barplots and histograms
+```
+```
+1. Bar plot showing genres
+```
+```{r}
+# Plotting genres frequencies
+
+# Seperating rows by the commas, to correctly count how many times each genre appears
+# Removing rows with no genres
+dfgenres <- df %>% select(genres) %>%
+  separate_rows(genres, sep = ", ") %>%
+  filter(genres != "")
+
+# Reorder factor levels based on frequency of occurrence
+dfgenres$genres <- fct_infreq(dfgenres$genres)
+
+# Plot the barplot
+ggplot(dfgenres, aes(x = genres, fill = genres)) +
+  geom_bar(stat = "count") +
+  theme(axis.text.x = element_text(angle = 45, size = 15)) +
+  labs(title = "Times each genre occurs", x = "Genres")
+```
+```
+2. Histogram showing profit
+```
+```{r}
+# Plotting revenue vs budget
+
+# take dfrev of revenues and budgetsbugger than 10mil
+dfrev <- df %>% select(revenue, budget)
+dfrev <- dfrev[dfrev$revenue > 10000000 & dfrev$budget > 10000000, ]
+dfrev <- dfrev %>% mutate(Profit = revenue - budget)
+
+# Plot histogram with 100 bins and zoom in, logarithmic frequencies
+ggplot(dfrev, aes(x = Profit)) +
+  geom_histogram(fill = "#4fcc4f", color = "black", bins = 100) +
+  scale_y_log10() +
+  labs(title = "Distribution of Profit", x = "Profit", y = "Frequency") +
+  xlim(-2e+08, 1e+09)
+```
+```
+Scatterplots
+```
+```
+1. Scatterplot showing popularity of movies vs their duration
+```
+```{r}
+# Scatterplot of popularity per duration, color representing languages
+
+# Selecting our needed columns
+dfdur <- df %>%
+  select(popularity, runtime, original_language, title) %>%
+  filter(runtime > 0, popularity > 100)
+
+# Combine palettes from RColorBrewer, so the colors are distinct
+combined_palette <- c(brewer.pal(9, "Set1"), brewer.pal(8, "Set2"), brewer.pal(8, "Set3"))
+
+# Factor the languages, sort them by frequency
+ggplot(dfdur, aes(x = popularity, y = runtime, color = factor(original_language, levels = names(sort(table(original_language), decreasing = TRUE))))) +
+  geom_point(size = 7) +
+  labs(title = "Popularity vs Duration", x = "Popularity", y = "Duration") +
+  scale_color_manual(values = combined_palette, name = "Languages")
+```
+```
+2. Scatterplot showing number of votes vs average voting
+```
+```{r}
+# Plotting votes and votecounts
+
+# Taking movies with 1000+ votes
+dfvotes <- df %>% select(vote_average, vote_count) %>%
+  filter(vote_average > 0, vote_count > 1000)
+
+# Plotting the scatterplot and adding a curved line
+ggplot(dfvotes, aes(x = vote_average, y = vote_count)) +
+  geom_point() +
+  geom_smooth(method = "loess", se = FALSE, color = "red") +
+  labs(title = "Scatter Plot of Vote Average vs. Vote Count",
+       x = "Vote Average", y = "Vote Count")
+```
+```
+3. Scatterplot showing popularity vs release date
+```
+```{r}
+# Plotting popularity by release dates
+
+# Filtering the data, taking popular films
+dfrelease <- df %>% select(release_date, popularity) %>%
+  filter(release_date != "", popularity > 50)
+
+# String into date
+dfrelease$release_date <- as.Date(dfrelease$release_date)
+
+# Plotting the scatterplot
+ggplot(dfrelease, aes(x = release_date, y = popularity)) +
+  geom_point() +
+  scale_y_log10() +
+  labs(title = "Release Date vs. Popularity",
+       x = "Release Date", y = "Popularity")
+```
+
+```
+Line charts
+```
+```
+1. Line chart showing movie frequencies by their genres
+```
+```{r}
+# Plotting movie frequencies by their genres
+
+# Seperate by genres, release dates, and genre frequencies
+library(lubridate)
+dfpop <- df %>%
+  separate_rows(genres, sep = ", ") %>%
+  select(genres, release_date) %>%
+  filter(genres != "", release_date != "")
+
+# Floor dates into months
+dfpop$release_date <- as.Date(dfpop$release_date)
+dfpop$release_date <- floor_date(dfpop$release_date, unit = "month")
+
+# Range for more accuracy
+dfpop <- dfpop %>%
+  filter(year(release_date) < 2024, year(release_date) > 1930)
+
+# Group by months and genres
+dfpop <- dfpop %>%
+  group_by(release_date, genres) %>%
+  summarise(Frequency = n())
+
+print(n = 40, dfpop)
+# Histogram, colors representing different genres, faceted
+ggplot(dfpop, aes(x = release_date, y = Frequency, color = genres)) +
+  geom_smooth(method = "loess", se = FALSE, span = 0.9) +
+  labs(title = "Movies by Genres", x = "Time", y = "Frequency") +
+  facet_grid(genres ~ ., scales = "free_y")
+```
+```
+2. Line chart showing popularities over time, by genres
+```
+```{r}
+movies <- slice(df, 1:100)
+#2
+# Separate genres into rows
+df_genre <- movies %>%
+  separate_rows(genres, sep = ", ") %>%
+  filter(!is.na(popularity))  # Remove rows with NA popularity
+
+# Convert release_date to date format
+df_genre$release_date <- as.Date(df_genre$release_date)
+
+# Aggregate the popularity data by genre and release date
+popularity_by_genre <- df_genre %>%
+  group_by(genres, release_date) %>%
+  summarize(avg_popularity = mean(popularity, na.rm = TRUE))
+
+genres_to_remove <- c("Western", "War", "History", "Music", "Romance")
+
+# Filter genres
+popularity_by_genre <- popularity_by_genre %>%
+  filter(!genres %in% genres_to_remove)
+
+# Plot movie popularity over time by genre
+ggplot(popularity_by_genre, aes(x = release_date, y = avg_popularity, color = genres)) +
+  geom_smooth(method = "loess", se = FALSE, span = 0.9) +
+  labs(title = "Movie Popularity Over Time by Genre", x = "Release Date", y = "Average Popularity") +
+  facet_wrap(~ genres, scales = "free_y") +
+  theme_minimal()
+```
+```
+3. Line chart showing audience engagement over time
+```
+```{r}
+#3
+#line chart for audience engagement over time
+movies <- slice(df, 1:100)
+
+movies$release_date <- as.Date(movies$release_date)
+
+# Aggregate the vote count data by release date
+vote_count_by_date <- movies %>%
+  group_by(release_date) %>%
+  summarize(total_votes = sum(vote_count, na.rm = TRUE))
+
+# Plot the line chart for audience engagement over time
+ggplot(vote_count_by_date, aes(x = release_date, y = total_votes)) +
+  geom_smooth(method = "loess", se = FALSE, span = 0.9) +
+  labs(title = "Audience Engagement Over Time",
+       x = "Release Date", y = "Total Votes")
+```
+```
+Wordclouds
+```
+```
+1. Wordcloud showing 30 longest movies
+```
+```{r}
+# Top 30 longest movies
+
+# Take popular, long movies
+dflongest <- df %>% select(title, runtime, adult, popularity) %>%
+  filter(runtime > 180, adult == "False", popularity > 50)
+
+# Arrange by longest 
+dflongest <- dflongest %>%
+  arrange(desc(runtime))
+
+# Take top 30
+dflongest_30 <- dflongest %>%
+  slice(1:30)
+
+wordcloud(words = dflongest_30$title, freq = dflongest_30$runtime, scale = c(3,.1), colors = viridis(n = length(unique(dflongest_30$title))), rot.per = 0)
+```
+```
+2. Wordcloud showing latest 15 movies
+```
+```{r}
+# Latest movies wordcloud
+
+# Pick movies before today, select latest 15
+dflatest <- df %>% select(title, release_date) %>%
+  filter(release_date != "", as.Date(release_date) < Sys.Date()) %>%
+  arrange(desc(release_date)) %>%
+  slice(1:15)
+
+# Convert release dates to numeric
+dflatest$release_date <- as.numeric(as.Date(dflatest$release_date))
+
+wordcloud(words = dflatest$title, freq = dflatest$release_date, colors = "Red", rot.per = 0)
+```
+```
+3. Wordcloud showing top spoken languages except english
+```
+```{r}
+# Top spoken languages except english
+
+# Take spoken languages except english, seperate by rows
+dfsplang <- df %>% select(spoken_languages) %>%
+  filter(spoken_languages != "") %>%
+  separate_rows(spoken_languages, sep = ", ") %>%
+  filter(spoken_languages != "English")
+
+# Groupby languagse, arrange their frequencies
+dfsplang <- dfsplang %>%
+  group_by(spoken_languages) %>%
+  summarise(frequency = n()) %>%
+  filter(frequency > 1)%>%
+  arrange(desc(frequency))
+
+# Take top 15
+dfsplang_15 <- dfsplang %>%
+  slice(1:15)
+
+wordcloud(words = dfsplang_15$spoken_languages, freq = dfsplang_15$frequency, colors = brewer.pal(15, "Greens")[6:9], rot.per = 0)
+```
+```
+4. Wordcloud showing TMDB's most popular movies
+```
+```{r}
+# Most popular movies
+
+# Take popular movies
+dfmovie <- df %>% select(title, popularity, adult) %>%
+  filter(popularity > 100, adult == "False")
+
+# rrange by popularity
+dfmovie <- dfmovie %>%
+  arrange(desc(popularity))
+
+
+# Take top 15
+dfmovie_15 <- dfmovie %>%
+  slice(1:15)
+
+# Make brewer palette from "blues"
+wordcloud(words = dfmovie_15$title, freq = dfmovie_15$popularity, colors = brewer.pal(15, "Blues")[6:9], rot.per = 0)
+```
+```
+5. Wordcloud showing top 50 keywords
+```
+```{r}
+# Top 50 keywords
+
+dfkey <- df %>% select(keywords, adult, popularity) %>%
+  filter(keywords != "", popularity > 50, adult == "False") %>%
+  separate_rows(keywords, sep = ", ")
+
+# Most common keywords
+dfkey <- dfkey %>%
+  group_by(keywords) %>%
+  summarise(frequency = n()) %>%
+  filter(frequency > 1, keywords != "softcore")%>%
+  arrange(desc(frequency))
+
+
+# Take top 50
+dfkey_50 <- dfkey %>%
+  slice(1:50)
+
+wordcloud(words = dfkey_50$keywords, freq = dfkey_50$frequency, colors = palette("Dark2"), rot.per = 0)
+```
